@@ -35,6 +35,7 @@ jobs:
     if: github.event_name == 'release'
     needs: lint-and-test
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       id-token: write
     steps:
