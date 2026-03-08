@@ -120,3 +120,19 @@ Use this format when adding a new decision:
 - API reference stays in sync with source code via mkdocstrings auto-generation.
 - `mkdocstrings[python]` added as a dev dependency.
 - Docs deploy on release via the existing CI workflow (`mkdocs gh-deploy`).
+
+---
+
+### 2026-03-08 — Lower minimum Python to 3.10 and add tox for multi-version testing
+
+**Status**: Accepted
+
+**Context**: The project required Python 3.12+, but the codebase uses no 3.11+ or 3.12+ syntax. All type hints (`str | None`, `list[X]`) are PEP 604/585 features available since Python 3.10. The overly aggressive floor excluded users on 3.10 and 3.11 without reason. Additionally, CI only tested against a single Python version.
+
+**Decision**: Lower `requires-python` to `>=3.10` and add tox (with `tox-uv`) for testing across Python 3.10, 3.11, 3.12, and 3.13. CI now runs lint as a separate job and tests each Python version via a matrix strategy using tox.
+
+**Consequences**:
+- Broader audience: users on Python 3.10 and 3.11 can now use the library.
+- Multi-version CI catches compatibility regressions early.
+- `tox` and `tox-uv` added as dev dependencies.
+- Developers can run `uv run tox` locally to test all versions before pushing.

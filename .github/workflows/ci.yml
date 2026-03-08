@@ -9,7 +9,7 @@ on:
     types: [published]
 
 jobs:
-  lint-and-test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,12 +28,28 @@ jobs:
       - name: Format check
         run: uv run black --check .
 
-      - name: Test
-        run: uv run pytest
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Test with tox
+        run: uv run tox -e py$(echo ${{ matrix.python-version }} | tr -d '.')
 
   publish:
     if: github.event_name == 'release'
-    needs: lint-and-test
+    needs: [lint, test]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -51,7 +67,7 @@ jobs:
 
   docs:
     if: github.event_name == 'release'
-    needs: lint-and-test
+    needs: [lint, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
