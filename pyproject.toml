@@ -7,7 +7,13 @@ requires-python = ">=3.12"
 license = {text = "MIT"}
 dependencies = [
     "pyramid",
+    "setuptools<78",
 ]
+
+[project.optional-dependencies]
+cornice = ["cornice", "marshmallow"]
+
+[project.entry-points."pyramid_introspector.extensions"]
 
 [build-system]
 requires = ["hatchling"]
@@ -32,4 +38,12 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [dependency-groups]
-dev = ["ruff", "black", "pytest", "mkdocs-material"]
+dev = [
+    "ruff",
+    "black",
+    "pytest",
+    "mkdocs-material",
+    "cornice",
+    "marshmallow",
+    "webtest",
+]
