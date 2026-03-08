@@ -43,6 +43,7 @@ dev = [
     "black",
     "pytest",
     "mkdocs-material",
+    "mkdocstrings[python]",
     "cornice",
     "marshmallow",
     "webtest",

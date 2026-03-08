@@ -104,3 +104,19 @@ Use this format when adding a new decision:
 - Consumers access security type uniformly via `view.security` without knowing the predicate name.
 - Aligns with how `permission` is already a first-class field for Pyramid's built-in authorization.
 - Extensions that use different predicate names (e.g. `mcp_security`) can set the same `view.security` field.
+
+---
+
+### 2026-03-08 — Full MkDocs documentation site with mkdocstrings
+
+**Status**: Accepted
+
+**Context**: The docs site had only a minimal `index.md` with "API Reference: Coming soon." The README was comprehensive but the MkDocs site -- the canonical documentation home -- was nearly empty.
+
+**Decision**: Build five documentation pages (landing, getting started, usage guide, extensions guide, API reference) using MkDocs Material with `mkdocstrings[python]` for auto-generated API docs from source docstrings.
+
+**Consequences**:
+- Users get a proper documentation site with navigation, search, and dark mode.
+- API reference stays in sync with source code via mkdocstrings auto-generation.
+- `mkdocstrings[python]` added as a dev dependency.
+- Docs deploy on release via the existing CI workflow (`mkdocs gh-deploy`).
