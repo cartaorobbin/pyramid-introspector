@@ -257,13 +257,52 @@ def _get_nested_schema(field_obj: Any) -> Any | None:
         return None
 
 
+def _resolve_nested_schema_ref(field_obj: Any) -> tuple[str | None, Any | None]:
+    """Resolve the schema class name and reference from a field.
+
+    Returns (schema_name, schema_class_or_instance) for:
+      - Nested fields: from field_obj.nested
+      - List fields with a Nested inner: from field_obj.inner.nested
+
+    Returns (None, None) when the field doesn't reference a schema.
+    """
+    nested_attr = getattr(field_obj, "nested", None)
+    if nested_attr is None:
+        inner = getattr(field_obj, "inner", None)
+        if inner is not None and type(inner).__name__ == "Nested":
+            nested_attr = getattr(inner, "nested", None)
+
+    if nested_attr is None:
+        return None, None
+
+    try:
+        if isinstance(nested_attr, type):
+            return nested_attr.__name__, nested_attr
+        if callable(nested_attr):
+            resolved = nested_attr()
+            if isinstance(resolved, type):
+                return resolved.__name__, resolved
+            return type(resolved).__name__, resolved
+        return type(nested_attr).__name__, nested_attr
+    except Exception:
+        logger.debug("Failed to resolve nested schema ref", exc_info=True)
+        return None, None
+
+
 def _extract_response_schema(view_callable: Any) -> Any | None:
     """Extract a response schema from a ``response_schema`` attribute."""
     return getattr(view_callable, "response_schema", None)
 
 
-def _schema_to_schema_info(schema_cls: Any) -> SchemaInfo | None:
-    """Build a SchemaInfo from a Marshmallow schema class or instance."""
+def _schema_to_schema_info(
+    schema_cls: Any, _seen: set[str] | None = None
+) -> SchemaInfo | None:
+    """Build a SchemaInfo from a Marshmallow schema class or instance.
+
+    Recursively discovers nested schemas and attaches them to
+    ``SchemaInfo.nested_schemas``.  The *_seen* set prevents infinite
+    recursion for self-referencing schemas.
+    """
     try:
         schema_instance = schema_cls() if isinstance(schema_cls, type) else schema_cls
         if not hasattr(schema_instance, "fields"):
@@ -274,11 +313,39 @@ def _schema_to_schema_info(schema_cls: Any) -> SchemaInfo | None:
             if isinstance(schema_cls, type)
             else type(schema_cls).__name__
         )
+
+        if _seen is None:
+            _seen = set()
+        if schema_name in _seen:
+            return None
+        _seen.add(schema_name)
+
         fields_info = _fields_to_schema_fields(schema_instance.fields)
-        return SchemaInfo(name=schema_name, fields=fields_info)
+        nested_schemas = _discover_nested_schemas(schema_instance.fields, _seen)
+
+        return SchemaInfo(
+            name=schema_name,
+            fields=fields_info,
+            nested_schemas=nested_schemas,
+        )
     except Exception:
         logger.debug("Failed to build SchemaInfo", exc_info=True)
         return None
+
+
+def _discover_nested_schemas(
+    fields: dict, seen: set[str]
+) -> list[SchemaInfo]:
+    """Walk fields and recursively build SchemaInfo for nested schemas."""
+    result = []
+    for field_obj in fields.values():
+        _, nested_ref = _resolve_nested_schema_ref(field_obj)
+        if nested_ref is None:
+            continue
+        nested_info = _schema_to_schema_info(nested_ref, seen)
+        if nested_info is not None:
+            result.append(nested_info)
+    return result
 
 
 def _fields_to_schema_fields(fields: dict) -> list[SchemaFieldInfo]:
@@ -288,6 +355,9 @@ def _fields_to_schema_fields(fields: dict) -> list[SchemaFieldInfo]:
         field_type = type(field_obj).__name__
         required = getattr(field_obj, "required", False)
         metadata = dict(getattr(field_obj, "metadata", {}))
+        allow_none = getattr(field_obj, "allow_none", False)
+        many = bool(getattr(field_obj, "many", False)) if field_type == "Nested" else False
+        nested_schema_name, _ = _resolve_nested_schema_ref(field_obj)
 
         result.append(
             SchemaFieldInfo(
@@ -295,6 +365,9 @@ def _fields_to_schema_fields(fields: dict) -> list[SchemaFieldInfo]:
                 field_type=field_type,
                 required=required,
                 metadata=metadata,
+                allow_none=allow_none,
+                many=many,
+                nested_schema=nested_schema_name,
             )
         )
     return result

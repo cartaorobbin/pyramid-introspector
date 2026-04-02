@@ -13,7 +13,10 @@ from cornice.validators import (
 from pyramid.config import Configurator
 
 from pyramid_introspector.discovery import discover_routes
-from pyramid_introspector.extensions.cornice import CorniceExtension
+from pyramid_introspector.extensions.cornice import (
+    CorniceExtension,
+    _schema_to_schema_info,
+)
 
 
 class ItemSchema(ma.Schema):
@@ -30,6 +33,31 @@ class ItemQuerySchema(ma.Schema):
 class CompositeSchema(ma.Schema):
     body = ma.fields.Nested(ItemSchema)
     querystring = ma.fields.Nested(ItemQuerySchema)
+
+
+class PhoneSchema(ma.Schema):
+    number = ma.fields.String(required=True)
+    label = ma.fields.String()
+
+
+class AddressSchema(ma.Schema):
+    street = ma.fields.String(required=True)
+    city = ma.fields.String(required=True)
+
+
+class PersonSchema(ma.Schema):
+    name = ma.fields.String(required=True)
+    birthdate = ma.fields.Date(allow_none=True)
+    phones = ma.fields.Nested(PhoneSchema, many=True)
+    address = ma.fields.Nested(AddressSchema)
+    tags = ma.fields.List(ma.fields.Nested(PhoneSchema))
+
+
+class TreeNodeSchema(ma.Schema):
+    """Self-referencing schema for circular recursion testing."""
+
+    value = ma.fields.String(required=True)
+    children = ma.fields.Nested(lambda: TreeNodeSchema, many=True)
 
 
 def _make_cornice_app(services):
@@ -288,3 +316,101 @@ def test_cornice_no_enrichment_for_non_cornice_route():
 
     items_route = next(r for r in routes if r.name == "items")
     assert items_route.views[0].extra.get("cornice_service_name") == "items"
+
+
+def test_schema_field_allow_none():
+    info = _schema_to_schema_info(PersonSchema)
+    assert info is not None
+
+    birthdate = next(f for f in info.fields if f.name == "birthdate")
+    assert birthdate.allow_none is True
+    assert birthdate.field_type == "Date"
+
+    name_field = next(f for f in info.fields if f.name == "name")
+    assert name_field.allow_none is False
+
+
+def test_schema_field_nested_many():
+    info = _schema_to_schema_info(PersonSchema)
+    assert info is not None
+
+    phones = next(f for f in info.fields if f.name == "phones")
+    assert phones.field_type == "Nested"
+    assert phones.many is True
+    assert phones.nested_schema == "PhoneSchema"
+
+
+def test_schema_field_nested_single():
+    info = _schema_to_schema_info(PersonSchema)
+    assert info is not None
+
+    address = next(f for f in info.fields if f.name == "address")
+    assert address.field_type == "Nested"
+    assert address.many is False
+    assert address.nested_schema == "AddressSchema"
+
+
+def test_schema_field_list_of_nested():
+    info = _schema_to_schema_info(PersonSchema)
+    assert info is not None
+
+    tags = next(f for f in info.fields if f.name == "tags")
+    assert tags.field_type == "List"
+    assert tags.nested_schema == "PhoneSchema"
+
+
+def test_nested_schema_recursive_discovery():
+    info = _schema_to_schema_info(PersonSchema)
+    assert info is not None
+
+    nested_names = {s.name for s in info.nested_schemas}
+    assert "PhoneSchema" in nested_names
+    assert "AddressSchema" in nested_names
+
+    phone_info = next(s for s in info.nested_schemas if s.name == "PhoneSchema")
+    phone_field_names = {f.name for f in phone_info.fields}
+    assert "number" in phone_field_names
+    assert "label" in phone_field_names
+
+    address_info = next(s for s in info.nested_schemas if s.name == "AddressSchema")
+    address_field_names = {f.name for f in address_info.fields}
+    assert "street" in address_field_names
+    assert "city" in address_field_names
+
+
+def test_nested_schema_no_circular_recursion():
+    info = _schema_to_schema_info(TreeNodeSchema)
+    assert info is not None
+    assert info.name == "TreeNodeSchema"
+
+    children_field = next(f for f in info.fields if f.name == "children")
+    assert children_field.field_type == "Nested"
+    assert children_field.many is True
+    assert children_field.nested_schema == "TreeNodeSchema"
+
+    assert info.nested_schemas == []
+
+
+def test_nested_schemas_via_cornice_pipeline():
+    """Nested schemas are discovered through the full Cornice enrichment."""
+    svc = Service(name="people", path="/people")
+
+    @svc.post(
+        schema=PersonSchema(),
+        validators=(marshmallow_body_validator,),
+    )
+    def create_person(request):
+        return {}
+
+    registry = _make_cornice_app([svc])
+    routes = discover_routes(registry)
+
+    ext = CorniceExtension()
+    routes = ext.enrich(registry, routes)
+
+    post_view = next(v for v in routes[0].views if v.method == "POST")
+    assert post_view.request_schema is not None
+
+    nested_names = {s.name for s in post_view.request_schema.nested_schemas}
+    assert "PhoneSchema" in nested_names
+    assert "AddressSchema" in nested_names

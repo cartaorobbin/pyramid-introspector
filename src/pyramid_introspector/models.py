@@ -23,6 +23,9 @@ class SchemaFieldInfo:
     field_type: str  # Marshmallow field class name, e.g. "Integer", "String"
     required: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    allow_none: bool = False
+    many: bool = False
+    nested_schema: str | None = None
 
 
 @dataclass
@@ -31,6 +34,7 @@ class SchemaInfo:
 
     name: str
     fields: list[SchemaFieldInfo] = field(default_factory=list)
+    nested_schemas: list["SchemaInfo"] = field(default_factory=list)
 
 
 @dataclass
