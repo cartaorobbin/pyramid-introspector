@@ -356,7 +356,8 @@ def _fields_to_schema_fields(fields: dict) -> list[SchemaFieldInfo]:
         required = getattr(field_obj, "required", False)
         metadata = dict(getattr(field_obj, "metadata", {}))
         allow_none = getattr(field_obj, "allow_none", False)
-        many = bool(getattr(field_obj, "many", False)) if field_type == "Nested" else False
+        is_nested = field_type == "Nested"
+        many = bool(getattr(field_obj, "many", False)) if is_nested else False
         nested_schema_name, _ = _resolve_nested_schema_ref(field_obj)
 
         result.append(
