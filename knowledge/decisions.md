@@ -136,3 +136,19 @@ Use this format when adding a new decision:
 - Multi-version CI catches compatibility regressions early.
 - `tox` and `tox-uv` added as dev dependencies.
 - Developers can run `uv run tox` locally to test all versions before pushing.
+
+---
+
+### 2026-04-02 — Nested schema introspection on SchemaInfo (tree structure)
+
+**Status**: Accepted
+
+**Context**: The introspector captured top-level schema fields but dropped three important marshmallow properties: `allow_none`, `many` (on Nested fields), and nested schema references. When a schema like `PersonSchema` had `phones = Nested(PhoneSchema, many=True)`, the generator had no way to know it was a list of `PhoneSchema` objects, and `PhoneSchema` itself was never captured. This forced generators to fall back to `ma.fields.Dict()` instead of emitting proper `ma.fields.Nested(PhoneSchema)`.
+
+**Decision**: (1) Add `allow_none`, `many`, and `nested_schema` to `SchemaFieldInfo`. (2) Add `nested_schemas: list[SchemaInfo]` to `SchemaInfo`, creating a tree that mirrors the marshmallow schema graph. (3) Recursively discover nested schemas in `_schema_to_schema_info` with cycle protection via a `_seen` set.
+
+**Consequences**:
+- Generators can emit accurate `Nested(SchemaClass, many=True)` and `List(Nested(SchemaClass))` field definitions.
+- `allow_none=True` fields are correctly represented, preventing false `ValidationError` on null values.
+- Nested schemas are self-contained within their parent `SchemaInfo` — consumers can flatten the tree with a simple recursive walk.
+- Circular schema references (self-referencing schemas) are handled gracefully without infinite recursion.
