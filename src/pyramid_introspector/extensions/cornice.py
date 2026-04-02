@@ -333,9 +333,7 @@ def _schema_to_schema_info(
         return None
 
 
-def _discover_nested_schemas(
-    fields: dict, seen: set[str]
-) -> list[SchemaInfo]:
+def _discover_nested_schemas(fields: dict, seen: set[str]) -> list[SchemaInfo]:
     """Walk fields and recursively build SchemaInfo for nested schemas."""
     result = []
     for field_obj in fields.values():
